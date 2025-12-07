@@ -1,0 +1,25 @@
+{
+  "name": "notification-system-backend",
+  "version": "1.0.0",
+  "description": "Robust Notification System with WebPush, FCM and Email fallback",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "worker": "node worker.js",
+    "dev": "concurrently \"node server.js\" \"node worker.js\"",
+    "setup-db": "node -e 'require(\"./database\").initDB()'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "web-push": "^3.6.0",
+    "nodemailer": "^6.9.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "body-parser": "^1.20.2",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

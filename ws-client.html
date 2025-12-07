@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Streaming Voice (WS) — Reliable</title>
+<style>
+  body{font-family:Arial;display:flex;flex-direction:column;align-items:center;padding:24px;}
+  #status{margin:8px 0;color:#333;}
+  #controls{display:flex;gap:8px;margin-top:12px;}
+  button{padding:10px 16px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer;}
+  button.primary{background:#0b78ff;color:#fff;border:none;}
+</style>
+</head>
+<body>
+  <h3>Reliable Voice — WebSocket Streaming</h3>
+  <div id="status">Status: stopped</div>
+  <div id="controls">
+    <button id="startBtn" class="primary">Start (single tap)</button>
+    <button id="stopBtn">Stop</button>
+    <button id="cutBtn">Cut (immediate stop)</button>
+  </div>
+
+  <div style="margin-top:16px; max-width:720px;">
+    <div><b>Transcript:</b></div>
+    <div id="transcript" style="min-height:60px;border:1px solid #eee;padding:8px;background:#fafafa;"></div>
+  </div>
+
+<script>
+(() => {
+  const WS_URL = (location.origin.replace(/^http/, 'ws')) + "/ws"; // change if different host
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const cutBtn  = document.getElementById('cutBtn');
+  const statusEl = document.getElementById('status');
+  const transcriptEl = document.getElementById('transcript');
+
+  let ws = null;
+  let mediaStream = null;
+  let recorder = null;
+  let isStreaming = false;
+  let chunkInterval = 1000; // ms
+  let audioQueue = [];
+
+  function setStatus(s){ statusEl.textContent = 'Status: ' + s; }
+
+  function openWs() {
+    if(ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    ws = new WebSocket(WS_URL);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => { setStatus('WS connected'); };
+    ws.onclose = (ev) => { setStatus('WS closed'); console.warn('ws closed',ev); };
+    ws.onerror = (e) => { setStatus('WS error'); console.error(e); };
+
+    ws.onmessage = (ev) => {
+      // Expect JSON messages or binary for server push TTS; we'll assume JSON text messages
+      if(typeof ev.data === 'string'){
+        try{
+          const msg = JSON.parse(ev.data);
+          // msg types: { type:'transcript', text:'...' } or { type:'tts', audioBase64:'...', mime:'audio/mp3' } or {type:'interrupt'}
+          if(msg.type === 'transcript'){
+            transcriptEl.textContent += (msg.text + '\n');
+            transcriptEl.scrollTop = transcriptEl.scrollHeight;
+          } else if(msg.type === 'tts' && msg.audioBase64){
+            playBase64(msg.audioBase64, msg.mime || 'audio/mp3');
+          } else if(msg.type === 'interrupt'){
+            // stop playback immediately
+            stopPlayback();
+            setStatus('Interrupted by server');
+          } else if(msg.type === 'log'){
+            console.log('server log:', msg.msg);
+          }
+        }catch(err){
+          console.warn('Invalid WS text',err);
+        }
+      } else {
+        // binary message (optional) - ignore or handle if server sends blobs
+        console.log('got binary', ev.data);
+      }
+    };
+  }
+
+  async function startStreaming() {
+    if(isStreaming) return;
+    openWs();
+    // request mic permission and get stream
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch(e){
+      alert('Mic access denied: ' + e.message);
+      return;
+    }
+
+    // Create MediaRecorder with timeslice to send periodic chunks
+    recorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm;codecs=opus' });
+    recorder.ondataavailable = (e) => {
+      if(e.data && e.data.size > 0){
+        // send chunk via ws as ArrayBuffer with small header
+        if(ws && ws.readyState === WebSocket.OPEN){
+          // send as binary: we send a JSON header first then raw chunk
+          // simpler: send a JSON metadata message then send chunk as binary
+          ws.send(JSON.stringify({ type:'chunk', timestamp: Date.now() }));
+          e.data.arrayBuffer().then(buf => ws.send(buf));
+        } else {
+          // queue if not open
+          audioQueue.push(e.data);
+        }
+      }
+    };
+
+    recorder.onstart = () => {
+      setStatus('Recording & streaming');
+      isStreaming = true;
+    };
+    recorder.onstop = () => {
+      setStatus('Recorder stopped');
+      isStreaming = false;
+    };
+
+    // start recorder with timeslice so ondataavailable fired frequently
+    recorder.start(chunkInterval);
+
+    // If ws had queued audio messages, send them
+    ws.addEventListener('open', () => {
+      while(audioQueue.length){
+        const blob = audioQueue.shift();
+        ws.send(JSON.stringify({ type:'chunk', replay: true, timestamp: Date.now() }));
+        blob.arrayBuffer().then(buf => ws.send(buf));
+      }
+    });
+
+    setStatus('Started (streaming)');
+  }
+
+  function stopStreaming() {
+    if(recorder && recorder.state !== 'inactive') recorder.stop();
+    if(mediaStream){
+      mediaStream.getTracks().forEach(t=>t.stop());
+      mediaStream = null;
+    }
+    setStatus('Stopped streaming (local)');
+    // tell server we're done
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({ type:'stop' }));
+    }
+  }
+
+  function cutAll() {
+    // immediate full stop & tell server to reset conversation
+    stopPlayback();
+    stopStreaming();
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({ type:'cut' })); // server should abort processing & reset
+    }
+    setStatus('Cut done — all stopped');
+  }
+
+  // Playback helper
+  let currentAudio = null;
+  function playBase64(b64, mime='audio/mp3'){
+    try {
+      if(currentAudio){ try { currentAudio.pause(); currentAudio.currentTime = 0; } catch{} }
+      const uri = `data:${mime};base64,${b64}`;
+      currentAudio = new Audio(uri);
+      currentAudio.playsInline = true;
+      currentAudio.onended = ()=> { currentAudio = null; setStatus('Playback finished'); };
+      currentAudio.play().catch(e=>{ console.warn('Play blocked',e); setStatus('Playback blocked, tap to play'); });
+    } catch(err){ console.error('play error',err); }
+  }
+  function stopPlayback(){
+    if(currentAudio){ try { currentAudio.pause(); currentAudio.currentTime = 0; } catch{} currentAudio = null; }
+  }
+
+  // UI bindings
+  startBtn.onclick = () => { startStreaming(); };
+  stopBtn.onclick = () => { stopStreaming(); };
+  cutBtn.onclick = () => { cutAll(); };
+
+  // open WS proactively
+  openWs();
+
+  // Auto reconnect WS on close (simple)
+  setInterval(()=> {
+    if(!ws || ws.readyState === WebSocket.CLOSED){
+      openWs();
+    }
+  }, 3000);
+
+})();
+</script>
+</body>
+</html>

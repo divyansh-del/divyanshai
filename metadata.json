@@ -1,0 +1,7 @@
+{
+  "name": "ChatBharat Ultra v4.9",
+  "description": "A hyper-intelligent AI operating system replicating ChatGPT UI with advanced OS features, multi-agent capabilities, and workspace management.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

@@ -1,0 +1,11 @@
+Step 6 & 7: Polishing and final ZIP
+- Added src/styles/chatgpt.css with animations and utilities.
+- Enhanced HeaderContainer with model selector and profile dropdown animations.
+- Integrated css import into ChatGPTLayout.
+- Added small animation wrappers to message components.
+
+To run locally:
+1) npm install
+2) npm run dev (Vite)
+
+If Tailwind is not configured, styles still use basic CSS but many components reference Tailwind classes.

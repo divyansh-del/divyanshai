@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.5; }
+        .card { border: 1px solid #ddd; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; }
+        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:disabled { background: #ccc; }
+        button.secondary { background: #6c757d; }
+        input { padding: 8px; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; }
+        .status { font-weight: bold; }
+        .status.active { color: green; }
+        .status.inactive { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🔔 Notification System Demo</h1>
+    
+    <!-- User Config -->
+    <div class="card">
+        <h2>1. User Identification</h2>
+        <p>Pretend you are logged in as:</p>
+        <input type="text" id="userId" value="user_123" placeholder="User ID">
+    </div>
+
+    <!-- Web Push Setup -->
+    <div class="card">
+        <h2>2. Web Push Subscription</h2>
+        <p>Status: <span id="pushStatus" class="status inactive">Not Subscribed</span></p>
+        <button id="enablePushBtn">Enable Push Notifications</button>
+        <div id="pushConsole" style="margin-top:10px; font-size: 0.8em; color: #555;"></div>
+    </div>
+
+    <!-- Preferences -->
+    <div class="card">
+        <h2>3. Preferences</h2>
+        <label><input type="checkbox" id="prefPush" checked> Allow Push</label><br>
+        <label><input type="checkbox" id="prefEmail" checked> Allow Email Fallback</label><br><br>
+        <button class="secondary" onclick="savePreferences()">Save Preferences</button>
+    </div>
+
+    <!-- Admin Test -->
+    <div class="card" style="border-color: #ffc107;">
+        <h2>4. Admin Testing (Trigger Notification)</h2>
+        <p>Send a notification to the User ID above.</p>
+        <input type="text" id="notifTitle" placeholder="Title" value="Hello World">
+        <input type="text" id="notifBody" placeholder="Body" value="This is a test message from admin panel.">
+        <button onclick="triggerNotification()">Send Notification</button>
+    </div>
+
+    <!-- Logs -->
+    <div class="card">
+        <h2>5. In-App Notification History</h2>
+        <button class="secondary" onclick="fetchHistory()">Refresh List</button>
+        <ul id="historyList"></ul>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>
